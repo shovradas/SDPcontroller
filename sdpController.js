@@ -148,7 +148,8 @@ function startDbPool() {
           host: config.dbHost,
           user: config.dbUser,
           database: config.dbName,
-          debug: false
+          debug: false,
+          multipleStatements: true
         });
     } else {
         db = mysql.createPool({
@@ -157,7 +158,8 @@ function startDbPool() {
           user: config.dbUser,
           password: dbPassword, //config.dbPassword,
           database: config.dbName,
-          debug: false
+          debug: false,
+          multipleStatements: true
         });
     }
     
@@ -462,6 +464,8 @@ function startServer() {
                 handleAccessAck();
             } else if (action === 'connection_update') {
                 handleConnectionUpdate(message);
+            } else if (action === 'shovra') { // else if block added by Shovra
+                handleShovra();                
             } else if (action === 'bad_message') {
                 // doing nothing with these yet
                 return;
@@ -470,6 +474,13 @@ function startServer() {
                 handleBadMessage(data.toString());
             }
         }    
+
+
+        // Function added by Shovra
+        function handleShovra() {
+            console.log("HI BUDDY!");
+        }
+
         
         function handleKeepAlive() {
             if (config.debug) {
@@ -929,9 +940,8 @@ function startServer() {
             } else {
                 console.log("Did not find SDP ID "+details.sdpid+ ", connection ID " + connectionId +" in the connection list");
             }
-        }
-      
-      
+        }        
+
         function handleServiceRefresh() {
             if (dataTransmitTries >= config.maxDataTransmitTries) {
                 // Data transmission has failed
@@ -977,7 +987,8 @@ function startServer() {
                     'FROM `service_gateway` ' +
                     'WHERE `service_gateway`.`gateway_sdpid` = ? ',
                     [memberDetails.sdpid],
-                    function (error, rows, fields) {
+                    function (error, rows, fields) {                        
+
                         connection.removeListener('error', databaseErrorCallback);
                         connection.release();
                         if(error) {
@@ -991,10 +1002,11 @@ function startServer() {
                             );
                             return;
                         }
-                        
+                                                
                         var data = [];
                         for(var rowIdx = 0; rowIdx < rows.length; rowIdx++) {
                             var thisRow = rows[rowIdx];
+
                             data.push({
                                 service_id: thisRow.service_id,
                                 proto: thisRow.protocol,
@@ -1004,21 +1016,83 @@ function startServer() {
                             });
                         }
                         
-                        if(config.debug) {
-                            console.log("Service refresh data to send: \n", data, "\n");
-                        }
-                        
-                        dataTransmitTries++;
-                        console.log("Sending service_refresh message to SDP ID " + 
-                            memberDetails.sdpid + ", attempt: " + dataTransmitTries);
-                
-                        writeToSocket(socket, 
-                            JSON.stringify({
-                                action: 'service_refresh',
-                                data
-                            }), 
-                            false
-                        );
+                        // ShovraComment: Added starts: Adding application policy to the final data
+                        let sqlTopics = `
+                                SELECT t.service_id, t.name AS topic_name, (SELECT username FROM user_credential uc WHERE uc.id=ut.user_id) AS username, (SELECT mqtt_password FROM user_credential uc WHERE uc.id=ut.user_id) AS password, ut.access
+                                FROM mqtttopic t, user_mqtttopic ut
+                                WHERE t.valid=1 AND t.id=ut.topic_id
+                                UNION
+                                SELECT (SELECT service_id FROM mqtttopic t WHERE t.id=gt.topic_id), (SELECT name FROM mqtttopic t WHERE t.id=gt.topic_id) AS topic_name, (SELECT username FROM user_credential uc WHERE uc.id=ug.user_id) AS username, (SELECT mqtt_password FROM user_credential uc WHERE uc.id=ug.user_id) AS password, gt.access
+                                FROM group_mqtttopic gt, user_group ug
+                                WHERE gt.topic_id IN (SELECT id FROM mqtttopic t WHERE valid=1) AND gt.group_id = ug.group_id
+                                ORDER BY username
+                        `;
+                        connection.query(sqlTopics, (topicError, topicRows, topicFields) => {
+                            for(var i in data){
+                                let topicAccess = topicRows.filter(tRow=> { return tRow.service_id == data[i].service_id});
+                                topicAccess = JSON.parse(JSON.stringify(topicAccess));
+                                
+                                if(topicAccess.length !=0){
+                                    let accessRules = topicAccess.map(r => { return {
+                                        topic_name: r.topic_name,
+                                        username: r.username,
+                                        access: r.access
+                                    }});
+    
+                                    let userCredentials = topicAccess.map(r => { return {
+                                        username: r.username,
+                                        password: r.password
+                                    }});
+
+                                    data[i].app_policy = {
+                                        mqtt: {
+                                            accessRules: accessRules,
+                                            userCredentials: userCredentials
+                                        }
+                                    };
+                                }
+                            }  
+
+                            let sql = 'SELECT service_id, url, access FROM service_httpurl sh, httpurl h WHERE h.id=sh.url_id';
+                            connection.query(sql, (error, rows, fields) => {   
+                                for(var i in data){
+                                    let httpAccess = rows.filter(r => { return r.service_id == data[i].service_id});
+                                    
+                                    if(httpAccess.length !=0){
+                                        let accessRules = httpAccess.map(r => { return {
+                                            url: r.url,
+                                            access: r.access
+                                        }});
+
+                                        if(!data[i].hasOwnProperty('app_policy')){
+                                            data[i].app_policy = {};
+                                        }
+                                        data[i].app_policy.http = {
+                                            accessRules: accessRules
+                                        };
+                                    }
+                                }
+
+                                // ShovraComment: Original Implementation start: Originally was outside this callback
+                                if(config.debug) {
+                                    console.log("Service refresh data to send: \n", data, "\n");
+                                }
+                                
+                                dataTransmitTries++;
+                                console.log("Sending service_refresh message to SDP ID " + 
+                                    memberDetails.sdpid + ", attempt: " + dataTransmitTries); 
+        
+                                writeToSocket(socket, 
+                                    JSON.stringify({
+                                        action: 'service_refresh',
+                                        data
+                                    }), 
+                                    false
+                                );
+                                // ShovraComment: Original Implementation ends  
+                            }); 
+                        });                      
+                        // ShovraComment: Added ends
                         
                     } // END QUERY CALLBACK FUNCTION
         
@@ -1468,7 +1542,6 @@ function startServer() {
             });  // END db.getConnection
             
         }  // END FUNCTION removeOpenConnections
-    
     
     
         // store connections in database
@@ -2029,7 +2102,7 @@ function sendAllGatewaysServiceRefresh(connection, databaseErrorCallback, gatewa
                         proto: thisRow.protocol,
                         port: thisRow.port,
                     });
-                }
+                }                
                 
                 // if this is the last data row or the next is a different gateway
                 if( (rowIdx + 1) == rows.length || 

@@ -1,6 +1,7 @@
 module.exports = {
     // print debug statements
     'debug': false,
+    // 'debug': true,
 
 	'serverPort': 5000,
 	'maxConnections': 100,
@@ -22,24 +23,24 @@ module.exports = {
 	'allowLegacyAccessRequests': false,
 
 	// can create these using ./setup/create-certs.sh
-	'serverCert': './path/server.crt',
-	'serverKey':  './path/server.key',
+	'serverCert': './certs/55540.crt',
+	'serverKey':  './certs/55540.key',
 
 	// to be prompted for a password, set this field
 	// to a null string using '' (that's 2 single quotes
 	// with no spaces between)
-	'serverKeyPassword': 'password',
-	'serverKeyPasswordRequired': true,
+	// 'serverKeyPassword': 'password',
+	'serverKeyPasswordRequired': false,
 
 	// can create these using ./setup/create-certs.sh
-	'caCert': './path/ca.crt',
-	'caKey': './path/ca.key',
+	'caCert': './certs/ca.crt',
+	'caKey': './certs/ca.key',
 
 	// to be prompted for a password, delete this field or
 	// set it to a null string using '' (that's 2 single 
 	// quotes with no spaces between)
-	'caKeyPassword': 'password',
-	'caKeyPasswordRequired': true,
+	// 'caKeyPassword': 'password',
+	'caKeyPasswordRequired': false,
 
 	// how many days new certificates should be good for
 	'daysToExpiration': 31,
