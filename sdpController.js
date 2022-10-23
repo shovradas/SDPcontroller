@@ -1031,7 +1031,7 @@ function startServer() {
                             for(var i in data){
                                 let topicAccess = topicRows.filter(tRow=> { return tRow.service_id == data[i].service_id});
                                 topicAccess = JSON.parse(JSON.stringify(topicAccess));
-                                
+
                                 if(topicAccess.length !=0){
                                     let accessRules = topicAccess.map(r => { return {
                                         topic_name: r.topic_name,
@@ -1044,19 +1044,28 @@ function startServer() {
                                         password: r.password
                                     }});
 
+                                    let uniqueUserNames = [];
+                                    userCredentials = userCredentials.filter(r => {
+                                        if (!uniqueUserNames.includes(r.username)) {
+                                            uniqueUserNames.push(r.username);
+                                            return true;
+                                        }                                      
+                                        return false;
+                                    });
+
                                     data[i].app_policy = {
                                         mqtt: {
-                                            accessRules: accessRules,
-                                            userCredentials: userCredentials
+                                            access_rules: accessRules,
+                                            user_credentials: userCredentials
                                         }
                                     };
                                 }
                             }  
 
                             let sql = 'SELECT service_id, url, access FROM service_httpurl sh, httpurl h WHERE h.id=sh.url_id';
-                            connection.query(sql, (error, rows, fields) => {   
+                            connection.query(sql, (httpAccessError, httpAccessRows, httpAccessFields) => {   
                                 for(var i in data){
-                                    let httpAccess = rows.filter(r => { return r.service_id == data[i].service_id});
+                                    let httpAccess = httpAccessRows.filter(r => { return r.service_id == data[i].service_id});
                                     
                                     if(httpAccess.length !=0){
                                         let accessRules = httpAccess.map(r => { return {
@@ -1068,7 +1077,7 @@ function startServer() {
                                             data[i].app_policy = {};
                                         }
                                         data[i].app_policy.http = {
-                                            accessRules: accessRules
+                                            access_rules: accessRules
                                         };
                                     }
                                 }
@@ -2143,19 +2152,28 @@ function sendAllGatewaysServiceRefresh(connection, databaseErrorCallback, gatewa
                                     password: r.password
                                 }});
 
+                                let uniqueUserNames = [];
+                                userCredentials = userCredentials.filter(r => {
+                                    if (!uniqueUserNames.includes(r.username)) {
+                                        uniqueUserNames.push(r.username);
+                                        return true;
+                                    }                                      
+                                    return false;
+                                });
+
                                 data[i].app_policy = {
                                     mqtt: {
-                                        accessRules: accessRules,
-                                        userCredentials: userCredentials
+                                        access_rules: accessRules,
+                                        user_credentials: userCredentials
                                     }
                                 };
                             }
                         }  
 
                         let sql = 'SELECT service_id, url, access FROM service_httpurl sh, httpurl h WHERE h.id=sh.url_id';
-                        connection.query(sql, (error, rows, fields) => {   
+                        connection.query(sql, (httpAccessError, httpAccessRows, httpAccessFields) => {   
                             for(var i in data){
-                                let httpAccess = rows.filter(r => { return r.service_id == data[i].service_id});
+                                let httpAccess = httpAccessRows.filter(r => { return r.service_id == data[i].service_id});
                                 
                                 if(httpAccess.length !=0){
                                     let accessRules = httpAccess.map(r => { return {
@@ -2167,7 +2185,7 @@ function sendAllGatewaysServiceRefresh(connection, databaseErrorCallback, gatewa
                                         data[i].app_policy = {};
                                     }
                                     data[i].app_policy.http = {
-                                        accessRules: accessRules
+                                        access_rules: accessRules
                                     };
                                 }
                             }
